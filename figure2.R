@@ -10,7 +10,7 @@ library(doParallel)
 library(broom)
 library(ggplot2)
 # pdsi -------------------------------------------------------------------------
-years <- 1984:2017 # something'is messed up with 2017...its projection is upside down and backwards
+years <- 1984:2016 # something'is messed up with 2017...its projection is upside down and backwards
 
 # downloading
 rawpath <- "~/data/gridmet/pdsi"
@@ -110,26 +110,39 @@ states <- st_read(state_file) %>%
                 STUSPS != "AK",
                 STUSPS != "HI") %>%
   st_transform(crs = crs(drought_10yrs, asText=TRUE))
-states <- readOGR(state_file, verbose = F)
-states@data$id <- rownames(states@data)
-states.points <- tidy(states, region="id")
-states.df <- left_join(states.points, states@data, by="id")
-
+# states <- readOGR(state_file, verbose = F)
+# states@data$id <- rownames(states@data)
+# states.points <- tidy(states, region="id")
+# states.df <- left_join(states.points, states@data, by="id")
+# 
 
 # prepping overlay -------------------------------------------------------------
 
-int <- stack(mtbs_10, floods10, drought_10yrs)
-int <- int %>%
+int <- stack(mtbs_10, floods10, drought_10yrs) %>%
   calc(sum) %>%
   mask(huc) %>%
   asFactor()
 
+
+
 levs <- levels(int)[[1]]
 levs$interactions = c("None", "Single", "Single", "Drought & Fire", "Single", 
                       "Flood & Fire", "Flood & Drought","Drought, Flood & Fire")
-colnames(levs) = c("ID", "interactions")
+levs$number = c(0, 1, 1, 2, 1,2, 2,3)
+
+colnames(levs) = c("ID", "interactions", "number")
 levels(int) = levs
 int_1 = deratify(int, 'interactions')
+int_2 <- deratify(int, 'number')
+int_2[is.na(int_2[])] <- 0 
+
+
+watersheds <- raster::extract(int_2, huc, fun=max) %>%
+  table() %>%
+  as.data.frame() %>%
+  dplyr::rename(Watersheds_Affected = ".")
+watersheds$num <- c("none", "Single", "Double", "Triple")
+watersheds$Watersheds_Affected <- NULL
 
 int_tab <- freq(int_1)[1:6,] %>% 
   as_tibble() %>%
@@ -137,7 +150,8 @@ int_tab <- freq(int_1)[1:6,] %>%
   left_join(levels(int_1)[[1]], by = c("value" = "ID")) %>%
   dplyr::select(interactions,percent)
 
-my_colors = c("lightgrey", "blue", "red", "orange", "black")
+# sdt <- tibble(ID = c(2,3,4,5,6),
+#               number = c(1,2,2,2,3))
 
 intp = rasterToPoints(int_1) %>%
   as_tibble() %>%
@@ -145,18 +159,26 @@ intp = rasterToPoints(int_1) %>%
   left_join(levels(int_1)[[1]]) %>%
   filter(interactions != "None") %>%
   left_join(int_tab) %>%
-  mutate(interactions = as.factor(paste0(interactions, " ", round(percent), "%")))
+  mutate(interactions = as.factor(paste0(interactions, " ", round(percent), "%"))) #%>%
+  #left_join(sdt)
 
 intp$interactions <- factor(intp$interactions,levels(intp$interactions)[c(5,1,3,4,2)])
 
+#calculating by watershed
+
+wlabel = "Watersheds Affected\nSingle: 894\nDouble: 828\nTriple: 223"
+my_colors = c("lightgrey", "turquoise4", "orange", "khaki", "firebrick")
+
 p <- ggplot() +
         geom_sf(data=huc, alpha = 0.5, lwd=0.25, color = "turquoise3", fill="white") +
-        geom_sf(data=states, alpha = 0.5, color = "grey20", fill="white") +
-        geom_raster(data = intp, aes(x=x, y=y,fill = interactions), alpha = 0.95) +
+        geom_sf(data=states, color = "grey40", fill="transparent") +
+        geom_raster(data = intp, aes(x=x, y=y,fill = interactions), alpha=0.85) +
         scale_fill_manual(values = my_colors) +
         theme_void() +
+        guides(fill=guide_legend(title=NULL)) +
+        theme(legend.justification=c(0,0), legend.position=c(0,0)) +
         theme(panel.grid.major = element_line(colour = 'transparent')) +
-        ggtitle("Disturbance Co-occurrence")
-        #coord_sf(crs="+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD27 +units=m +no_defs")
+        annotate("text", x=-90, y=26, label = wlabel, size=3) +
+        ggtitle("Disturbance Co-occurrence") 
 
-ggsave("co-occurrence.pdf",limitsize = FALSE)
+ggsave("co-occurrence.png",limitsize = FALSE)
