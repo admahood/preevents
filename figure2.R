@@ -8,31 +8,28 @@ library(dplyr)
 library(foreach)
 library(doParallel)
 library(broom)
-library(ggplot2)
+library(ggplot2) # needs to be from install_github("hadley/ggplot2")
 
 # huc --------------------------------------------------------------------------
-
-
 huc_file <- "~/data/background/hydrologic_units/huc250k_shp/huc250k.shp"
 destfile <- "~/Downloads/huc.zip"
+
 if(!file.exists(huc_file)){
   download.file("https://water.usgs.gov/GIS/dsdl/huc250k_shp.zip",
                 destfile =destfile)
   unzip(destfile, exdir = "~/data/background/hydrologic_units")
   unlink(destfile)
 }
-huc <- st_read(huc_file) #%>%
-#  st_transform(crs = crs(drought_10yrs, asText=TRUE))
+
+huc <- st_read(huc_file)
 huc1 <-readOGR(huc_file)
+
 # pdsi -------------------------------------------------------------------------
 years <- 1984:2016 # something'is messed up with 2017...its projection is upside down and backwards
 
 # downloading
 rawpath <- "~/data/gridmet/pdsi"
 dir.create(rawpath, recursive = TRUE)
-
-
-
 for(y in years){
   destfile <- path.expand(paste0(rawpath,"/pdsi_",y,".nc"))
   sourcefile <- paste0("http://www.northwestknowledge.net/metdata/data/pdsi_",y,".nc")
@@ -40,7 +37,7 @@ for(y in years){
     download.file(sourcefile, destfile)}
 }
 
-# calculating mean PDSI
+# calculating mean PDSI and applying a threshold of -2
 respath<-"~/data/gridmet/pdsi_mean"
 dir.create(respath)
 threshold <- -2
@@ -97,9 +94,6 @@ floods10 <- st_read(flood_file)%>%
   calc(fun = function(x)x*100) #%>% plot(floods10)
 
 floods10[is.na(floods10[])] <- 0 
-# projection(floods10) <- crs(drought_10yrs)
-
-
 
 # states -----------------------------------------------------------------------
 state_file <- "~/data/background/states/tl_2017_us_state.shp"
@@ -115,11 +109,6 @@ states <- st_read(state_file) %>%
                 STUSPS != "AK",
                 STUSPS != "HI") %>%
   st_transform(crs = crs(drought_10yrs, asText=TRUE))
-# states <- readOGR(state_file, verbose = F)
-# states@data$id <- rownames(states@data)
-# states.points <- tidy(states, region="id")
-# states.df <- left_join(states.points, states@data, by="id")
-# 
 
 # prepping overlay -------------------------------------------------------------
 
@@ -127,8 +116,6 @@ int <- stack(mtbs_10, floods10, drought_10yrs) %>%
   calc(sum) %>%
   mask(huc) %>%
   asFactor()
-
-
 
 levs <- levels(int)[[1]]
 levs$interactions = c("None", "Single", "Single", "Drought & Fire", "Single", 
@@ -140,7 +127,6 @@ levels(int) = levs
 int_1 = deratify(int, 'interactions')
 int_2 <- deratify(int, 'number')
 int_2[is.na(int_2[])] <- 0 
-
 
 watersheds <- raster::extract(int_2, huc, fun=max) %>%
   table() %>%
@@ -155,21 +141,17 @@ int_tab <- freq(int_1)[1:6,] %>%
   left_join(levels(int_1)[[1]], by = c("value" = "ID")) %>%
   dplyr::select(interactions,percent)
 
-# sdt <- tibble(ID = c(2,3,4,5,6),
-#               number = c(1,2,2,2,3))
-
 intp = rasterToPoints(int_1) %>%
   as_tibble() %>%
   rename(ID = interactions) %>%
   left_join(levels(int_1)[[1]]) %>%
   filter(interactions != "None") %>%
   left_join(int_tab) %>%
-  mutate(interactions = as.factor(paste0(interactions, " ", round(percent), "%"))) #%>%
-  #left_join(sdt)
+  mutate(interactions = as.factor(paste0(interactions, " ", round(percent), "%")))
 
 intp$interactions <- factor(intp$interactions,levels(intp$interactions)[c(5,1,3,4,2)])
 
-#calculating by watershed
+# plot -------------------------------------------------------------------------
 
 wlabel = paste0("Watersheds Affected\nSingle: ",
                 watersheds[watersheds$num=="Single",]$Freq,
