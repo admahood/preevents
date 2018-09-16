@@ -9,6 +9,21 @@ library(foreach)
 library(doParallel)
 library(broom)
 library(ggplot2)
+
+# huc --------------------------------------------------------------------------
+
+
+huc_file <- "~/data/background/hydrologic_units/huc250k_shp/huc250k.shp"
+destfile <- "~/Downloads/huc.zip"
+if(!file.exists(huc_file)){
+  download.file("https://water.usgs.gov/GIS/dsdl/huc250k_shp.zip",
+                destfile =destfile)
+  unzip(destfile, exdir = "~/data/background/hydrologic_units")
+  unlink(destfile)
+}
+huc <- st_read(huc_file) #%>%
+#  st_transform(crs = crs(drought_10yrs, asText=TRUE))
+huc1 <-readOGR(huc_file)
 # pdsi -------------------------------------------------------------------------
 years <- 1984:2016 # something'is messed up with 2017...its projection is upside down and backwards
 
@@ -36,6 +51,7 @@ registerDoParallel(c)
 foreach(y = years)%dopar%{
   stack(file.path(rawpath, paste0("pdsi_", y, ".nc"))) %>%
     calc(mean) %>%
+    projectRaster(crs=crs(huc1)) %>%
     reclassify(rclmat, filename = paste0(respath, "/mean_pdsi_u-", threshold,"_", y, ".tif"))
   system(paste("echo",y))
 }
@@ -72,6 +88,7 @@ mtbs_10[is.na(mtbs_10[])] <- 0
 
 flood_file <- "~/data/sheldus/flood_yi/SHELDUS/National_data/us_counties.shp"
 floods10 <- st_read(flood_file)%>%
+  st_transform(crs=st_crs(huc)) %>%
   mutate(flood10= ifelse(Floo_Incid>10, 100,0)) %>%
   dplyr::filter(flood10 > 0) %>%
   dplyr::select(flood10) %>%
@@ -80,21 +97,9 @@ floods10 <- st_read(flood_file)%>%
   calc(fun = function(x)x*100) #%>% plot(floods10)
 
 floods10[is.na(floods10[])] <- 0 
-projection(floods10) <- crs(drought_10yrs)
-
-# huc --------------------------------------------------------------------------
+# projection(floods10) <- crs(drought_10yrs)
 
 
-huc_file <- "~/data/background/hydrologic_units/huc250k_shp/huc250k.shp"
-destfile <- "~/Downloads/huc.zip"
-if(!file.exists(huc_file)){
-  download.file("https://water.usgs.gov/GIS/dsdl/huc250k_shp.zip",
-                destfile =destfile)
-  unzip(destfile, exdir = "~/data/background/hydrologic_units")
-  unlink(destfile)
-}
-huc <- st_read(huc_file) %>%
-  st_transform(crs = crs(drought_10yrs, asText=TRUE))
 
 # states -----------------------------------------------------------------------
 state_file <- "~/data/background/states/tl_2017_us_state.shp"
@@ -166,7 +171,10 @@ intp$interactions <- factor(intp$interactions,levels(intp$interactions)[c(5,1,3,
 
 #calculating by watershed
 
-wlabel = "Watersheds Affected\nSingle: 894\nDouble: 828\nTriple: 223"
+wlabel = paste0("Watersheds Affected\nSingle: ",
+                watersheds[watersheds$num=="Single",]$Freq,
+                "\nDouble: ",watersheds[watersheds$num=="Double",]$Freq,
+                "\nTriple: ",watersheds[watersheds$num=="Triple",]$Freq)
 my_colors = c("lightgrey", "turquoise4", "orange", "khaki", "firebrick")
 
 p <- ggplot() +
@@ -176,9 +184,11 @@ p <- ggplot() +
         scale_fill_manual(values = my_colors) +
         theme_void() +
         guides(fill=guide_legend(title=NULL)) +
-        theme(legend.justification=c(0,0), legend.position=c(0,0)) +
-        theme(panel.grid.major = element_line(colour = 'transparent')) +
-        annotate("text", x=-90, y=26, label = wlabel, size=3) +
+        theme(legend.justification=c(0,0), legend.position=c(0,0),
+              panel.grid.major = element_line(colour = 'transparent'),
+              plot.title = element_text(hjust = 0.5)) +
+        annotate("text", x=-1000000, y=380000,label = wlabel, size=3) +
         ggtitle("Disturbance Co-occurrence") 
 
-ggsave("co-occurrence.png",limitsize = FALSE)
+ggsave("co-occurrence_aea.png",limitsize = FALSE)
+
