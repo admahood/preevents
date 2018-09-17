@@ -169,8 +169,8 @@ p <- ggplot() +
         theme(legend.justification=c(0,0), legend.position=c(0,0),
               panel.grid.major = element_line(colour = 'transparent'),
               plot.title = element_text(hjust = 0.5)) +
-        annotate("text", x=-1000000, y=380000,label = wlabel, size=3) +
-        ggtitle("Disturbance Co-occurrence") 
+        annotate("text", x=800000, y=380000,label = wlabel, size=3) +
+        annotate("text", x=100000, y=3200000, label = "Disturbance Co-occurrence", size=8)
 
 ggsave("co-occurrence_aea.png",limitsize = FALSE)
 
