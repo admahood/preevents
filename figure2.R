@@ -160,7 +160,7 @@ wlabel = paste0("Watersheds Affected\nSingle: ",
 my_colors = c("lightgrey", "turquoise4", "orange", "khaki", "firebrick")
 
 p <- ggplot() +
-        geom_sf(data=huc, alpha = 0.5, lwd=0.25, color = "turquoise3", fill="white") +
+        geom_sf(data=huc, lwd=0.25, color = "turquoise3", fill="white") +
         geom_sf(data=states, color = "grey40", fill="transparent") +
         geom_raster(data = intp, aes(x=x, y=y,fill = interactions), alpha=0.85) +
         scale_fill_manual(values = my_colors) +
@@ -172,5 +172,5 @@ p <- ggplot() +
         annotate("text", x=800000, y=380000,label = wlabel, size=3) +
         annotate("text", x=100000, y=3200000, label = "Disturbance Co-occurrence", size=8)
 
-ggsave("co-occurrence_aea.png",limitsize = FALSE)
+ggsave("co-occurrence_aea.pdf",dpi="retina",limitsize = FALSE)
 
